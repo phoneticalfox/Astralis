@@ -7,7 +7,8 @@ typedef enum ExprType {
   EXPR_LITERAL = 0,
   EXPR_IDENT,
   EXPR_BINARY,
-  EXPR_CALL
+  EXPR_CALL,
+  EXPR_GROUP
 } ExprType;
 
 typedef struct Expr Expr;
@@ -17,8 +18,9 @@ typedef enum BinOp {
 } BinOp;
 
 typedef struct CallExpr {
-  Token callee;      // identifier/keyword token
-  Expr* arg;         // single-arg calls in seed0 (ask)
+  Expr* callee;
+  Expr** args;
+  size_t arg_count;
 } CallExpr;
 
 struct Expr {
@@ -36,20 +38,38 @@ typedef enum StmtType {
   STMT_WARN,
   STMT_SET,
   STMT_LOCK,
+  STMT_IF,
+  STMT_LOOP_FOREVER,
+  STMT_REPEAT,
+  STMT_DEFINE,
+  STMT_RETURN,
+  STMT_BREAK,
+  STMT_CONTINUE,
+  STMT_EXPR,
   STMT_UNSUPPORTED
 } StmtType;
 
 typedef struct Stmt {
   StmtType type;
   Token name;        // for set/lock
-  Expr* expr;        // expression for show/warn/set/lock
+  Expr* expr;        // expression for show/warn/set/lock/return/expr
+  Expr* expr_b;      // repeat upper bound
+  Token loop_var;    // repeat loop variable
+  struct Block* block;     // if/loop/define body
+  struct Block* else_block; // otherwise block
+  Token* params;     // function parameters
+  size_t param_count;
   size_t line;
 } Stmt;
 
-typedef struct Program {
+typedef struct Block {
   Stmt* stmts;
   size_t count;
   size_t cap;
+} Block;
+
+typedef struct Program {
+  Block block;
 } Program;
 
 typedef struct ParseError {

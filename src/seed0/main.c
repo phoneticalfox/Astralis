@@ -54,8 +54,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  program_free(&p);
   env_free(&env);
+  program_free(&p);
   free(src);
   return 0;
 }

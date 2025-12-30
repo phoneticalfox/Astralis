@@ -14,6 +14,7 @@ typedef enum TokenType {
   TOK_RPAREN,
   TOK_COMMA,
   TOK_PLUS,
+  TOK_COLON,
 
   // keywords
   TOK_SET,
@@ -40,7 +41,10 @@ typedef enum TokenType {
   TOK_START,
   TOK_WITH,
   TOK_AS,
-  TOK_ARROW
+  TOK_ARROW,
+  TOK_RETURN,
+  TOK_BREAK,
+  TOK_CONTINUE
 } TokenType;
 
 typedef struct Token {

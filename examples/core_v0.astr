@@ -1,0 +1,27 @@
+// core_v0.astr exercises new control flow + functions
+
+define add_up(n):
+  set sum to 0
+  repeat i from 1 to n:
+    if i then
+      set sum to sum + i
+    otherwise
+      continue
+  return sum
+
+define greet(name) -> show "hello, " + name
+
+show "start"
+if 0 then
+  warn "should not see"
+otherwise
+  show "branch chosen"
+
+repeat j from 1 to 3:
+  show "j=" + j
+
+loop forever:
+  greet("astralis")
+  break
+
+show "sum=" + add_up(4)
