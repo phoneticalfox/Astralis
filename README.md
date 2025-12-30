@@ -31,11 +31,11 @@ Regression suite (examples):
 tools/run_examples.sh
 ```
 
-## FFI importer (`astrac c-import`)
+## FFI importer prototype
 
-`tools/astrac_c_import.py` is the Clang-backed importer for Astralis FFI v0. It
-parses a header, rejects constructs that are unsupported in v0 (e.g. variadic
-functions), and emits a ready-to-use binding into `bindings/`.
+An early `astrac c-import` prototype lives in `tools/astrac_c_import.py`. It uses
+Clang's JSON AST to generate foreign module stubs from a header file and writes
+the result into `bindings/`.
 
 Example:
 
