@@ -31,6 +31,18 @@ Regression suite (examples):
 tools/run_examples.sh
 ```
 
+## FFI importer prototype
+
+An early `astrac c-import` prototype lives in `tools/astrac_c_import.py`. It uses
+Clang's JSON AST to generate foreign module stubs from a header file and writes
+the result into `bindings/`.
+
+Example:
+
+```bash
+python tools/astrac_c_import.py examples/ffi/simple_math.h --link c -o bindings/simple_math.astr
+```
+
 ## Repo layout
 
 - `docs/language-core.md` — **Astralis-Lang**: keywords, grammar outline, semantics targets
