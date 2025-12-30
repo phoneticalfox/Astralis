@@ -19,6 +19,8 @@ jobs:
         run: |
           cd src/seed0
           ./astralis ../../examples/hello.astr
-          printf "Astralis\n" | ./astralis ../../examples/vars.astr
-          cd ../..
-          ./tools/run_examples.sh
+          ./astralis ../../examples/vars.astr < ../../examples/vars.in
+
+      - name: regression suite
+        run: |
+          tools/run_examples.sh

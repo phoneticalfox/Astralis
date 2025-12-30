@@ -1,16 +1,16 @@
-# Open decisions (tracked)
+# Core decisions (tracked)
 
-1) Connector token: `->` vs `as`
-- v0: accept both; canonicalize in formatter/linter later.
+1) Connector token: `:` vs `->` vs `as`
+- Core v0 canonicalizes `:` for block bodies. `->`/`as` stay as inline sugar when the body lives on the same line; keep accepting them for compatibility.
 
 2) Errors: exception vs error-as-value
-- v0 interpreter currently uses error-as-value for I/O and control flow short-circuits on errors.
+- Core v0 interpreter keeps error-as-value; statements abort when evaluation returns an error.
 
 3) Blocks:
-- v0 interpreter uses indentation-sensitive parsing for nested blocks.
+- Indentation-sensitive parsing remains the model for nested blocks.
 
 4) Truthiness model:
-- falsey values are `null`, `false`, `0`, empty strings, and errors; everything else is truthy.
+- Falsey values are `null`, `false`, `0`, empty strings, and errors; everything else is truthy.
 
-5) Canonical block connector for functions and control flow:
-- `:` is treated as the canonical block opener; `->`/`as` are accepted as inline sugar when the body stays on the same line.
+5) Functions:
+- Function bodies use the same `:`/inline sugar rule as other blocks. Returns default to `null` when omitted; arity must match the declared parameter list.
