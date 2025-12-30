@@ -1,0 +1,27 @@
+// minipad.astr (spec-level sample; requires loops, lists, file stdlib)
+//
+// This is the "small but intricate" CLI line editor sample used to validate the core design.
+// It is NOT runnable on seed0 yet.
+//
+// start with file from std::io
+// start with text from std::text
+//
+// define main:
+//   lock path to "notes.txt"
+//   set lines to []
+//
+//   set loaded to file::read(path)
+//   if loaded is error:
+//     warn "Could not read " + path + ". Starting with an empty buffer."
+//   otherwise
+//     set lines to split loaded by "\n"
+//
+//   show "MiniPad — a tiny line editor"
+//   show "Commands: :p (print), :w (write), :find (search), :q (quit)"
+//
+//   loop forever:
+//     set input to ask("> ")
+//     if input is ":q": break
+//     if input is ":p": ...
+//
+//   show "Goodbye."

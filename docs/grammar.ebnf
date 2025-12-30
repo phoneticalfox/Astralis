@@ -1,0 +1,49 @@
+; Astralis grammar sketch (EBNF-ish) — scaffold, not final
+
+program        = { statement } ;
+
+statement      = decl_stmt
+               | io_stmt
+               | if_stmt
+               | loop_stmt
+               | try_stmt
+               | func_def
+               | import_stmt
+               | module_def
+               | expr_stmt
+               ;
+
+decl_stmt      = ("set" | "lock") ident "to" expr NEWLINE ;
+
+io_stmt        = ("show" | "say" | "warn") expr NEWLINE
+               | "set" ident "to" "ask" "(" expr ")" NEWLINE
+               ;
+
+if_stmt        = "if" expr "then" NEWLINE INDENT { statement } DEDENT
+                 [ "otherwise" NEWLINE INDENT { statement } DEDENT ] ;
+
+loop_stmt      = "repeat" ident "from" expr "to" expr connector NEWLINE INDENT { statement } DEDENT
+               | "loop" "forever" connector NEWLINE INDENT { statement } DEDENT
+               ;
+
+try_stmt       = "try" expr "otherwise" NEWLINE INDENT { statement } DEDENT ;
+
+func_def       = "define" ident "(" [ params ] ")" connector NEWLINE INDENT { statement } DEDENT ;
+
+connector      = "->" | "as" ;
+
+import_stmt    = "start" "with" ident "from" module_name NEWLINE ;
+
+module_def     = "module" module_name ":" NEWLINE INDENT { statement } DEDENT ;
+
+expr_stmt      = expr NEWLINE ;
+
+expr           = literal
+               | ident
+               | expr op expr
+               | call
+               ;
+
+call           = ident "(" [ args ] ")" ;
+
+literal        = STRING | NUMBER | "true" | "false" | "null" ;

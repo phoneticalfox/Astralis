@@ -1,0 +1,21 @@
+# build outputs
+src/seed0/astralis
+src/seed0/*.o
+src/seed0/*.d
+src/seed0/build/
+*.asm
+*.o
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# archives
+*.zip
