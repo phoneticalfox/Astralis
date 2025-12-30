@@ -31,6 +31,18 @@ Regression suite (examples):
 tools/run_examples.sh
 ```
 
+## FFI importer (`astrac c-import`)
+
+`tools/astrac_c_import.py` is the Clang-backed importer for Astralis FFI v0. It
+parses a header, rejects constructs that are unsupported in v0 (e.g. variadic
+functions), and emits a ready-to-use binding into `bindings/`.
+
+Example:
+
+```bash
+python tools/astrac_c_import.py examples/ffi/simple_math.h --link c -o bindings/simple_math.astr
+```
+
 ## Repo layout
 
 - `docs/language-core.md` — **Astralis-Lang**: keywords, grammar outline, semantics targets
