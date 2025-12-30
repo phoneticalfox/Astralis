@@ -14,3 +14,12 @@
 
 5) Functions:
 - Function bodies use the same `:`/inline sugar rule as other blocks. Returns default to `null` when omitted; arity must match the declared parameter list.
+
+
+## FFI v0 decisions (tracked)
+
+1) Baseline target triple: `x86_64-linux-gnu` (SysV AMD64).
+
+2) Variadic C functions: **wrapper-required** in v0 (direct varargs calls are unsupported).
+
+3) Foreign calls: require an explicit `unsafe:` boundary.
