@@ -1,49 +1,50 @@
-; Astralis grammar sketch (EBNF-ish) — scaffold, not final
+; Astralis Core v0 grammar accepted by seed0 (EBNF-ish)
+; Indentation establishes blocks. `connector` tokens (`->`, `as`, `:`, `then`)
+; permit inline bodies; otherwise a NEWLINE is followed by an indented block.
 
-program        = { statement } ;
+program        = { statement [ NEWLINE ] } EOF ;
 
-statement      = decl_stmt
-               | io_stmt
+statement      = io_stmt
+               | decl_stmt
+               | return_stmt
+               | break_stmt
+               | continue_stmt
                | if_stmt
                | loop_stmt
-               | try_stmt
+               | repeat_stmt
                | func_def
-               | import_stmt
-               | module_def
                | expr_stmt
                ;
 
-decl_stmt      = ("set" | "lock") ident "to" expr NEWLINE ;
+decl_stmt      = ("set" | "lock") IDENT "to" expr ;
 
-io_stmt        = ("show" | "say" | "warn") expr NEWLINE
-               | "set" ident "to" "ask" "(" expr ")" NEWLINE
-               ;
+io_stmt        = ("show" | "say" | "warn") expr ;
 
-if_stmt        = "if" expr "then" NEWLINE INDENT { statement } DEDENT
-                 [ "otherwise" NEWLINE INDENT { statement } DEDENT ] ;
+return_stmt    = "return" [ expr ] ;
+break_stmt     = "break" ;
+continue_stmt  = "continue" ;
 
-loop_stmt      = "repeat" ident "from" expr "to" expr connector NEWLINE INDENT { statement } DEDENT
-               | "loop" "forever" connector NEWLINE INDENT { statement } DEDENT
-               ;
+if_stmt        = "if" expr [ connector ] inline_or_block [ "otherwise" [ connector ] inline_or_block ] ;
 
-try_stmt       = "try" expr "otherwise" NEWLINE INDENT { statement } DEDENT ;
+loop_stmt      = "loop" [ "forever" ] [ connector ] inline_or_block ;
 
-func_def       = "define" ident "(" [ params ] ")" connector NEWLINE INDENT { statement } DEDENT ;
+repeat_stmt    = "repeat" IDENT "from" expr "to" expr [ connector ] inline_or_block ;
 
-connector      = "->" | "as" ;
+func_def       = "define" IDENT "(" [ params ] ")" [ connector ] inline_or_block ;
+params         = IDENT { "," IDENT } ;
 
-import_stmt    = "start" "with" ident "from" module_name NEWLINE ;
+expr_stmt      = expr ;
 
-module_def     = "module" module_name ":" NEWLINE INDENT { statement } DEDENT ;
+inline_or_block = inline_stmt | indented_block ;
+inline_stmt    = statement ;
+indented_block = NEWLINE INDENT { statement NEWLINE } DEDENT ;
 
-expr_stmt      = expr NEWLINE ;
+expr           = add ;
+add            = call { "+" call } ;
+call           = primary { "(" [ args ] ")" } ;
+args           = expr { "," expr } ;
+primary        = NUMBER
+               | STRING
+               | IDENT       ;      ; includes `ask` keyword for now
 
-expr           = literal
-               | ident
-               | expr op expr
-               | call
-               ;
-
-call           = ident "(" [ args ] ")" ;
-
-literal        = STRING | NUMBER | "true" | "false" | "null" ;
+connector      = "->" | "as" | ":" | "then" ;
