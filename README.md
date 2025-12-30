@@ -9,12 +9,10 @@ This repo is a **starter scaffold** for the Astralis programming language:
 
 ## Quick start (seed0)
 
-Seed0 currently supports:
-- `show "string"` / `say "string"`
-- `warn "string"`
-- `set name to "string"` / `set name to 123`
-- `lock name to ...` (same as `set`, but immutable)
-- `ask("prompt")` (reads a line)
+Seed0 currently supports the **Core v0** slice (see `docs/core-v0.md` for the locked contract):
+- statements: `set`, `lock`, `if/otherwise`, `loop forever`, `repeat i from A to B`, `define`, `return`, `break`, `continue`
+- expressions: literals, identifiers, `()`, binary `+`, function calls
+- I/O: `show` / `say`, `warn`, `ask("prompt")`
 
 Build:
 ```bash
@@ -25,6 +23,12 @@ make
 Run:
 ```bash
 ./astralis ../../examples/hello.astr
+```
+
+Regression suite (examples):
+```bash
+# from repo root, after building seed0
+tools/run_examples.sh
 ```
 
 ## Repo layout
