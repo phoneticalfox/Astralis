@@ -12,9 +12,13 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+
+
+DEFAULT_TARGET = "x86_64-linux-gnu"
 
 
 @dataclass
@@ -43,28 +47,36 @@ class StructDecl:
 
 
 class ClangAstImporter:
-    def __init__(self, header: Path, includes: List[str], defines: List[str], target: Optional[str]):
+    def __init__(self, header: Path, includes: List[str], defines: List[str], target: Optional[str], allow_varargs: bool = False):
         self.header = header
         self.includes = includes
         self.defines = defines
-        self.target = target
+        self.target = target or DEFAULT_TARGET
+        self.allow_varargs = allow_varargs
 
     def parse(self) -> Dict[str, List]:
         tree = self._load_ast()
         functions: List[FunctionDecl] = []
         structs: List[StructDecl] = []
+        skipped_varargs: List[str] = []
 
         for node in self._walk(tree):
             if node.get("isImplicit"):
                 continue
 
             if node.get("kind") == "FunctionDecl" and self._from_header(node):
+                if self._is_varargs(node):
+                    if self.allow_varargs:
+                        functions.append(self._parse_function(node))
+                    else:
+                        skipped_varargs.append(node.get("name", "<anon>"))
+                    continue
                 functions.append(self._parse_function(node))
             elif node.get("kind") == "RecordDecl" and node.get("completeDefinition"):
                 if self._from_header(node) and node.get("name"):
                     structs.append(self._parse_struct(node))
 
-        return {"functions": functions, "structs": structs}
+        return {"functions": functions, "structs": structs, "skipped_varargs": skipped_varargs}
 
     def _load_ast(self) -> dict:
         cmd = [
@@ -75,10 +87,8 @@ class ClangAstImporter:
             "-x",
             "c",
             "-std=c11",
+            f"--target={self.target}",
         ]
-
-        if self.target:
-            cmd += ["--target", self.target]
 
         for inc in self.includes:
             cmd += ["-I", inc]
@@ -103,6 +113,9 @@ class ClangAstImporter:
             # running against a single header, treat them as local.
             return True
         return Path(file) == self.header
+
+    def _is_varargs(self, node: dict) -> bool:
+        return bool(node.get("isVariadic"))
 
     def _parse_function(self, node: dict) -> FunctionDecl:
         qual_type = node["type"]["qualType"]
@@ -153,13 +166,21 @@ class ClangAstImporter:
             return "c.i64"
         if lower in {"long unsigned int", "unsigned long", "unsigned long int"}:
             return "c.u64"
+        if lower in {"long long", "long long int"}:
+            return "c.i64"
+        if lower in {"unsigned long long", "unsigned long long int"}:
+            return "c.u64"
         if lower in {"char", "signed char"}:
             return "c.i8"
         if lower == "unsigned char":
             return "c.u8"
+        if lower in {"_bool", "bool"}:
+            return "c.bool"
         if lower == "float":
             return "c.f32"
         if lower == "double":
+            return "c.f64"
+        if lower == "long double":
             return "c.f64"
         if lower == "size_t":
             return "c.usize"
@@ -202,15 +223,28 @@ def main() -> None:
     parser.add_argument("--link", "-l", action="append", default=[], help="Libraries to link against")
     parser.add_argument("--include", "-I", action="append", default=[], help="Additional include paths")
     parser.add_argument("--define", "-D", action="append", default=[], help="Macro definitions for Clang")
-    parser.add_argument("--target", help="Optional Clang target triple")
+    parser.add_argument(
+        "--target",
+        help=f"Optional Clang target triple (default: {DEFAULT_TARGET})",
+    )
     parser.add_argument("--module", help="Override module name (default: header stem)")
     parser.add_argument("--output", "-o", type=Path, required=True, help="Output Astralis bindings file")
+    parser.add_argument(
+        "--allow-varargs",
+        action="store_true",
+        help="Allow emitting variadic functions (FFI v0 requires wrappers; disabled by default)",
+    )
 
     args = parser.parse_args()
     module_name = args.module or args.header.stem.replace("-", "_")
 
-    importer = ClangAstImporter(args.header, args.include, args.define, args.target)
+    importer = ClangAstImporter(
+        args.header, args.include, args.define, args.target, allow_varargs=args.allow_varargs
+    )
     decls = importer.parse()
+    if decls.get("skipped_varargs"):
+        for fn in decls["skipped_varargs"]:
+            print(f"skipping variadic function {fn} (wrap in C before importing)", file=sys.stderr)
 
     rendered = render_module(module_name, args.link, decls, source=args.header)
     args.output.parent.mkdir(parents=True, exist_ok=True)
