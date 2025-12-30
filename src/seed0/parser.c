@@ -5,6 +5,7 @@
 
 static void set_error(ParseError* err, size_t line, size_t col, const char* msg) {
   if (!err) return;
+  if (err->has_error) return;
   err->has_error = true;
   err->line = line;
   err->col = col;
@@ -12,8 +13,7 @@ static void set_error(ParseError* err, size_t line, size_t col, const char* msg)
 }
 
 static Expr* expr_new(void) {
-  Expr* e = (Expr*)calloc(1, sizeof(Expr));
-  return e;
+  return (Expr*)calloc(1, sizeof(Expr));
 }
 
 static void expr_free(Expr* e) {
@@ -21,28 +21,39 @@ static void expr_free(Expr* e) {
   if (e->type == EXPR_LITERAL) value_free(&e->lit);
   expr_free(e->left);
   expr_free(e->right);
-  expr_free(e->call.arg);
+  if (e->type == EXPR_CALL) {
+    expr_free(e->call.callee);
+    for (size_t i = 0; i < e->call.arg_count; i++) expr_free(e->call.args[i]);
+    free(e->call.args);
+  }
   free(e);
+}
+
+static void block_free(Block* b) {
+  if (!b) return;
+  for (size_t i = 0; i < b->count; i++) {
+    expr_free(b->stmts[i].expr);
+    expr_free(b->stmts[i].expr_b);
+    block_free(b->stmts[i].block);
+    block_free(b->stmts[i].else_block);
+    free(b->stmts[i].params);
+  }
+  free(b->stmts);
+  b->stmts = NULL; b->count = 0; b->cap = 0;
 }
 
 void program_free(Program* p) {
   if (!p) return;
-  for (size_t i = 0; i < p->count; i++) {
-    expr_free(p->stmts[i].expr);
-  }
-  free(p->stmts);
-  p->stmts = NULL;
-  p->count = 0;
-  p->cap = 0;
+  block_free(&p->block);
 }
 
-static void prog_push(Program* p, Stmt s) {
-  if (p->count + 1 > p->cap) {
-    size_t nc = p->cap ? p->cap * 2 : 16;
-    p->stmts = (Stmt*)realloc(p->stmts, nc * sizeof(Stmt));
-    p->cap = nc;
+static void block_push(Block* b, Stmt s) {
+  if (b->count + 1 > b->cap) {
+    size_t nc = b->cap ? b->cap * 2 : 16;
+    b->stmts = (Stmt*)realloc(b->stmts, nc * sizeof(Stmt));
+    b->cap = nc;
   }
-  p->stmts[p->count++] = s;
+  b->stmts[b->count++] = s;
 }
 
 typedef struct Parser {
@@ -57,10 +68,7 @@ static void adv(Parser* ps) {
 }
 
 static bool match(Parser* ps, TokenType t) {
-  if (ps->cur.type == t) {
-    adv(ps);
-    return true;
-  }
+  if (ps->cur.type == t) { adv(ps); return true; }
   return false;
 }
 
@@ -75,7 +83,6 @@ static Expr* parse_expr(Parser* ps, ParseError* err);
 static Expr* parse_primary(Parser* ps, ParseError* err) {
   if (err && err->has_error) return NULL;
 
-  // literal
   if (ps->cur.type == TOK_STRING) {
     Expr* e = expr_new();
     e->type = EXPR_LITERAL;
@@ -92,25 +99,20 @@ static Expr* parse_primary(Parser* ps, ParseError* err) {
     adv(ps);
     return e;
   }
-
-  // ask(...) call
-  if (ps->cur.type == TOK_ASK) {
-    Expr* e = expr_new();
-    e->type = EXPR_CALL;
-    e->call.callee = ps->cur;
-    adv(ps);
-    consume(ps, TOK_LPAREN, err, "expected '(' after ask");
-    e->call.arg = parse_expr(ps, err);
-    consume(ps, TOK_RPAREN, err, "expected ')' after ask argument");
-    return e;
-  }
-
-  // identifier
-  if (ps->cur.type == TOK_IDENT) {
+  if (ps->cur.type == TOK_IDENT || ps->cur.type == TOK_ASK) {
     Expr* e = expr_new();
     e->type = EXPR_IDENT;
     e->tok = ps->cur;
     adv(ps);
+    return e;
+  }
+  if (ps->cur.type == TOK_LPAREN) {
+    adv(ps);
+    Expr* inner = parse_expr(ps, err);
+    consume(ps, TOK_RPAREN, err, "expected ')' after group");
+    Expr* e = expr_new();
+    e->type = EXPR_GROUP;
+    e->left = inner;
     return e;
   }
 
@@ -118,14 +120,39 @@ static Expr* parse_primary(Parser* ps, ParseError* err) {
   return NULL;
 }
 
+static Expr* parse_call(Parser* ps, ParseError* err) {
+  Expr* expr = parse_primary(ps, err);
+  while (ps->cur.type == TOK_LPAREN) {
+    adv(ps); // consume '('
+    Expr** args = NULL;
+    size_t argc = 0, cap = 0;
+    if (ps->cur.type != TOK_RPAREN) {
+      do {
+        if (argc + 1 > cap) {
+          size_t nc = cap ? cap * 2 : 4;
+          args = (Expr**)realloc(args, nc * sizeof(Expr*));
+          cap = nc;
+        }
+        args[argc++] = parse_expr(ps, err);
+      } while (match(ps, TOK_COMMA));
+    }
+    consume(ps, TOK_RPAREN, err, "expected ')' after arguments");
+    Expr* call = expr_new();
+    call->type = EXPR_CALL;
+    call->call.callee = expr;
+    call->call.args = args;
+    call->call.arg_count = argc;
+    expr = call;
+  }
+  return expr;
+}
+
 static Expr* parse_term(Parser* ps, ParseError* err) {
-  return parse_primary(ps, err);
+  return parse_call(ps, err);
 }
 
 static Expr* parse_expr(Parser* ps, ParseError* err) {
   Expr* left = parse_term(ps, err);
-  if (err && err->has_error) return left;
-
   while (ps->cur.type == TOK_PLUS) {
     Token op = ps->cur;
     adv(ps);
@@ -145,7 +172,29 @@ static void skip_newlines(Parser* ps) {
   while (ps->cur.type == TOK_NEWLINE) adv(ps);
 }
 
-static Stmt parse_stmt(Parser* ps, ParseError* err) {
+static Block parse_block(Parser* ps, ParseError* err, size_t indent);
+static Stmt parse_stmt(Parser* ps, ParseError* err, size_t indent);
+
+static bool is_block_connector(TokenType t) {
+  return t == TOK_ARROW || t == TOK_COLON || t == TOK_AS || t == TOK_THEN;
+}
+
+static Block* parse_inline_block(Parser* ps, ParseError* err, size_t indent) {
+  (void)indent;
+  Block* b = (Block*)calloc(1, sizeof(Block));
+  Stmt s;
+  memset(&s, 0, sizeof(s));
+  s = (Stmt){0};
+  s.type = STMT_UNSUPPORTED;
+  s.line = ps->cur.line;
+
+  // parse a single statement inline
+  s = parse_stmt(ps, err, indent);
+  block_push(b, s);
+  return b;
+}
+
+static Stmt parse_stmt(Parser* ps, ParseError* err, size_t indent) {
   Stmt s;
   memset(&s, 0, sizeof(s));
   s.type = STMT_UNSUPPORTED;
@@ -161,6 +210,15 @@ static Stmt parse_stmt(Parser* ps, ParseError* err) {
     s.expr = parse_expr(ps, err);
     return s;
   }
+  if (match(ps, TOK_RETURN)) {
+    s.type = STMT_RETURN;
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF)
+      s.expr = parse_expr(ps, err);
+    return s;
+  }
+  if (match(ps, TOK_BREAK)) { s.type = STMT_BREAK; return s; }
+  if (match(ps, TOK_CONTINUE)) { s.type = STMT_CONTINUE; return s; }
+
   if (match(ps, TOK_SET) || match(ps, TOK_LOCK)) {
     bool is_lock = (ps->prev.type == TOK_LOCK);
     s.type = is_lock ? STMT_LOCK : STMT_SET;
@@ -175,11 +233,120 @@ static Stmt parse_stmt(Parser* ps, ParseError* err) {
     return s;
   }
 
-  // reserved keywords -> explicit error for now
-  if (ps->cur.type == TOK_DEFINE || ps->cur.type == TOK_IF || ps->cur.type == TOK_LOOP ||
-      ps->cur.type == TOK_REPEAT || ps->cur.type == TOK_TRY || ps->cur.type == TOK_MODULE ||
-      ps->cur.type == TOK_START) {
-    set_error(err, ps->cur.line, ps->cur.col, "statement reserved but not implemented in seed0");
+  if (match(ps, TOK_IF)) {
+    s.type = STMT_IF;
+    s.expr = parse_expr(ps, err);
+    if (is_block_connector(ps->cur.type)) adv(ps);
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+      s.block = parse_inline_block(ps, err, indent);
+      return s;
+    }
+    consume(ps, TOK_NEWLINE, err, "expected newline after if condition");
+    skip_newlines(ps);
+    size_t body_indent = ps->cur.col;
+    s.block = (Block*)calloc(1, sizeof(Block));
+    *s.block = parse_block(ps, err, body_indent);
+    if (ps->cur.type == TOK_OTHERWISE) {
+      adv(ps);
+      if (is_block_connector(ps->cur.type)) adv(ps);
+      if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+        s.else_block = parse_inline_block(ps, err, indent);
+        return s;
+      }
+      consume(ps, TOK_NEWLINE, err, "expected newline after otherwise");
+      skip_newlines(ps);
+      size_t else_indent = ps->cur.col;
+      s.else_block = (Block*)calloc(1, sizeof(Block));
+      *s.else_block = parse_block(ps, err, else_indent);
+    }
+    return s;
+  }
+
+  if (match(ps, TOK_LOOP)) {
+    s.type = STMT_LOOP_FOREVER;
+    if (match(ps, TOK_FOREVER)) {
+      // ok
+    }
+    if (is_block_connector(ps->cur.type)) adv(ps);
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+      s.block = parse_inline_block(ps, err, indent);
+      return s;
+    }
+    consume(ps, TOK_NEWLINE, err, "expected newline after loop forever");
+    skip_newlines(ps);
+    size_t body_indent = ps->cur.col;
+    s.block = (Block*)calloc(1, sizeof(Block));
+    *s.block = parse_block(ps, err, body_indent);
+    return s;
+  }
+
+  if (match(ps, TOK_REPEAT)) {
+    s.type = STMT_REPEAT;
+    if (ps->cur.type != TOK_IDENT) {
+      set_error(err, ps->cur.line, ps->cur.col, "expected identifier after repeat");
+      return s;
+    }
+    s.loop_var = ps->cur;
+    adv(ps);
+    consume(ps, TOK_FROM, err, "expected 'from' after loop variable");
+    s.expr = parse_expr(ps, err);
+    consume(ps, TOK_TO, err, "expected 'to' after loop lower bound");
+    s.expr_b = parse_expr(ps, err);
+    if (is_block_connector(ps->cur.type)) adv(ps);
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+      s.block = parse_inline_block(ps, err, indent);
+      return s;
+    }
+    consume(ps, TOK_NEWLINE, err, "expected newline after repeat header");
+    skip_newlines(ps);
+    size_t body_indent = ps->cur.col;
+    s.block = (Block*)calloc(1, sizeof(Block));
+    *s.block = parse_block(ps, err, body_indent);
+    return s;
+  }
+
+  if (match(ps, TOK_DEFINE)) {
+    s.type = STMT_DEFINE;
+    if (ps->cur.type != TOK_IDENT) {
+      set_error(err, ps->cur.line, ps->cur.col, "expected function name after define");
+      return s;
+    }
+    s.name = ps->cur;
+    adv(ps);
+    consume(ps, TOK_LPAREN, err, "expected '(' after function name");
+    Token* params = NULL; size_t pc = 0, pcap = 0;
+    if (ps->cur.type != TOK_RPAREN) {
+      do {
+        if (ps->cur.type != TOK_IDENT) { set_error(err, ps->cur.line, ps->cur.col, "expected parameter name"); break; }
+        if (pc + 1 > pcap) {
+          size_t nc = pcap ? pcap * 2 : 4;
+          params = (Token*)realloc(params, nc * sizeof(Token));
+          pcap = nc;
+        }
+        params[pc++] = ps->cur;
+        adv(ps);
+      } while (match(ps, TOK_COMMA));
+    }
+    consume(ps, TOK_RPAREN, err, "expected ')' after parameters");
+    s.params = params;
+    s.param_count = pc;
+    if (is_block_connector(ps->cur.type)) adv(ps);
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+      s.block = parse_inline_block(ps, err, indent);
+      return s;
+    }
+    consume(ps, TOK_NEWLINE, err, "expected newline after function header");
+    skip_newlines(ps);
+    size_t body_indent = ps->cur.col;
+    s.block = (Block*)calloc(1, sizeof(Block));
+    *s.block = parse_block(ps, err, body_indent);
+    return s;
+  }
+
+  // expression as statement (function calls etc.)
+  if (ps->cur.type != TOK_EOF && ps->cur.type != TOK_NEWLINE) {
+    s.type = STMT_EXPR;
+    s.expr = parse_expr(ps, err);
     return s;
   }
 
@@ -187,9 +354,31 @@ static Stmt parse_stmt(Parser* ps, ParseError* err) {
   return s;
 }
 
+static Block parse_block(Parser* ps, ParseError* err, size_t indent) {
+  Block b; memset(&b, 0, sizeof(b));
+  while (ps->cur.type != TOK_EOF) {
+    if (ps->cur.col < indent) break;
+    Stmt s = parse_stmt(ps, err, indent);
+    block_push(&b, s);
+    if (ps->cur.type == TOK_NEWLINE) {
+      adv(ps);
+    } else if (ps->cur.type != TOK_EOF && ps->cur.col > indent) {
+      set_error(err, ps->cur.line, ps->cur.col, "unexpected token at end of statement");
+      break;
+    }
+    skip_newlines(ps);
+    if (err && err->has_error) break;
+    if (ps->cur.col < indent) break;
+  }
+  if (err && err->has_error) {
+    block_free(&b);
+    memset(&b, 0, sizeof(b));
+  }
+  return b;
+}
+
 Program parse_source(const char* src, size_t len, ParseError* err) {
-  Program p;
-  memset(&p, 0, sizeof(p));
+  Program p; memset(&p, 0, sizeof(p));
   if (err) memset(err, 0, sizeof(*err));
 
   Parser ps;
@@ -198,26 +387,6 @@ Program parse_source(const char* src, size_t len, ParseError* err) {
   ps.prev = ps.cur;
 
   skip_newlines(&ps);
-
-  while (ps.cur.type != TOK_EOF) {
-    if (err && err->has_error) break;
-    Stmt s = parse_stmt(&ps, err);
-    prog_push(&p, s);
-
-    // consume rest of line until newline or EOF
-    while (ps.cur.type != TOK_NEWLINE && ps.cur.type != TOK_EOF) {
-      // if we get here, the statement parser didn't consume all tokens -> error
-      set_error(err, ps.cur.line, ps.cur.col, "unexpected token at end of statement");
-      break;
-    }
-    if (ps.cur.type == TOK_NEWLINE) adv(&ps);
-    skip_newlines(&ps);
-  }
-
-  if (err && err->has_error) {
-    // free expressions to avoid leaks
-    program_free(&p);
-    memset(&p, 0, sizeof(p));
-  }
+  p.block = parse_block(&ps, err, ps.cur.col ? ps.cur.col : 1);
   return p;
 }

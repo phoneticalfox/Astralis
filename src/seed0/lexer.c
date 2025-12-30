@@ -92,6 +92,9 @@ static TokenType keyword_type(const char* s, size_t n) {
   KW("start", TOK_START);
   KW("with", TOK_WITH);
   KW("as", TOK_AS);
+  KW("return", TOK_RETURN);
+  KW("break", TOK_BREAK);
+  KW("continue", TOK_CONTINUE);
   #undef KW
   return TOK_IDENT;
 }
@@ -117,6 +120,7 @@ Token lexer_next(Lexer* lx) {
   if (c == ')') { advance(lx); return make_token(lx, TOK_RPAREN, lx->src + lx->pos - 1, 1, 0, col_start); }
   if (c == ',') { advance(lx); return make_token(lx, TOK_COMMA,  lx->src + lx->pos - 1, 1, 0, col_start); }
   if (c == '+') { advance(lx); return make_token(lx, TOK_PLUS,   lx->src + lx->pos - 1, 1, 0, col_start); }
+  if (c == ':') { advance(lx); return make_token(lx, TOK_COLON,  lx->src + lx->pos - 1, 1, 0, col_start); }
 
   // arrow token "->"
   if (c == '-' && peek2(lx) == '>') {
@@ -180,6 +184,7 @@ const char* token_type_name(TokenType t) {
     case TOK_RPAREN: return ")";
     case TOK_COMMA: return ",";
     case TOK_PLUS: return "+";
+    case TOK_COLON: return ":";
     case TOK_SET: return "set";
     case TOK_LOCK: return "lock";
     case TOK_TO: return "to";
@@ -203,6 +208,9 @@ const char* token_type_name(TokenType t) {
     case TOK_WITH: return "with";
     case TOK_AS: return "as";
     case TOK_ARROW: return "->";
+    case TOK_RETURN: return "return";
+    case TOK_BREAK: return "break";
+    case TOK_CONTINUE: return "continue";
     default: return "<?>"; 
   }
 }
