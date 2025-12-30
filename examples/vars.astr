@@ -1,0 +1,12 @@
+// vars.astr
+set name to ask("name> ")
+show "hello, " + name
+
+set year to 2025
+show "year is " + year
+
+lock vibe to "periwinkle"
+show "vibe: " + vibe
+
+// next line should error if executed (locked binding)
+// set vibe to "nope"
