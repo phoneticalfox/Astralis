@@ -75,6 +75,9 @@ static TokenType keyword_type(const char* s, size_t n) {
   KW("say", TOK_SAY);
   KW("warn", TOK_WARN);
   KW("ask", TOK_ASK);
+  KW("and", TOK_AND);
+  KW("or", TOK_OR);
+  KW("not", TOK_NOT);
 
   // reserved / future
   KW("define", TOK_DEFINE);
@@ -120,13 +123,25 @@ Token lexer_next(Lexer* lx) {
   if (c == ')') { advance(lx); return make_token(lx, TOK_RPAREN, lx->src + lx->pos - 1, 1, 0, col_start); }
   if (c == ',') { advance(lx); return make_token(lx, TOK_COMMA,  lx->src + lx->pos - 1, 1, 0, col_start); }
   if (c == '+') { advance(lx); return make_token(lx, TOK_PLUS,   lx->src + lx->pos - 1, 1, 0, col_start); }
-  if (c == ':') { advance(lx); return make_token(lx, TOK_COLON,  lx->src + lx->pos - 1, 1, 0, col_start); }
-
-  // arrow token "->"
-  if (c == '-' && peek2(lx) == '>') {
-    advance(lx); advance(lx);
-    return make_token(lx, TOK_ARROW, lx->src + lx->pos - 2, 2, 0, col_start);
+  if (c == '-') {
+    if (peek2(lx) == '>') { advance(lx); advance(lx); return make_token(lx, TOK_ARROW, lx->src + lx->pos - 2, 2, 0, col_start); }
+    advance(lx); return make_token(lx, TOK_MINUS, lx->src + lx->pos - 1, 1, 0, col_start);
   }
+  if (c == '*') { advance(lx); return make_token(lx, TOK_STAR,   lx->src + lx->pos - 1, 1, 0, col_start); }
+  if (c == '/') { advance(lx); return make_token(lx, TOK_SLASH,  lx->src + lx->pos - 1, 1, 0, col_start); }
+  if (c == '=' && peek2(lx) == '=') { advance(lx); advance(lx); return make_token(lx, TOK_EQUAL_EQUAL, lx->src + lx->pos - 2, 2, 0, col_start); }
+  if (c == '!' && peek2(lx) == '=') { advance(lx); advance(lx); return make_token(lx, TOK_BANG_EQUAL, lx->src + lx->pos - 2, 2, 0, col_start); }
+  if (c == '<') {
+    advance(lx);
+    if (peek(lx) == '=') { advance(lx); return make_token(lx, TOK_LTE, lx->src + lx->pos - 2, 2, 0, col_start); }
+    return make_token(lx, TOK_LT, lx->src + lx->pos - 1, 1, 0, col_start);
+  }
+  if (c == '>') {
+    advance(lx);
+    if (peek(lx) == '=') { advance(lx); return make_token(lx, TOK_GTE, lx->src + lx->pos - 2, 2, 0, col_start); }
+    return make_token(lx, TOK_GT, lx->src + lx->pos - 1, 1, 0, col_start);
+  }
+  if (c == ':') { advance(lx); return make_token(lx, TOK_COLON,  lx->src + lx->pos - 1, 1, 0, col_start); }
 
   // string
   if (c == '"') {
@@ -184,6 +199,15 @@ const char* token_type_name(TokenType t) {
     case TOK_RPAREN: return ")";
     case TOK_COMMA: return ",";
     case TOK_PLUS: return "+";
+    case TOK_MINUS: return "-";
+    case TOK_STAR: return "*";
+    case TOK_SLASH: return "/";
+    case TOK_EQUAL_EQUAL: return "==";
+    case TOK_BANG_EQUAL: return "!=";
+    case TOK_LT: return "<";
+    case TOK_LTE: return "<=";
+    case TOK_GT: return ">";
+    case TOK_GTE: return ">=";
     case TOK_COLON: return ":";
     case TOK_SET: return "set";
     case TOK_LOCK: return "lock";
@@ -207,6 +231,9 @@ const char* token_type_name(TokenType t) {
     case TOK_START: return "start";
     case TOK_WITH: return "with";
     case TOK_AS: return "as";
+    case TOK_AND: return "and";
+    case TOK_OR: return "or";
+    case TOK_NOT: return "not";
     case TOK_ARROW: return "->";
     case TOK_RETURN: return "return";
     case TOK_BREAK: return "break";

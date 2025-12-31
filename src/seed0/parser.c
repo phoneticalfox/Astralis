@@ -21,6 +21,7 @@ static void expr_free(Expr* e) {
   if (e->type == EXPR_LITERAL) value_free(&e->lit);
   expr_free(e->left);
   expr_free(e->right);
+  expr_free(e->cond);
   if (e->type == EXPR_CALL) {
     expr_free(e->call.callee);
     for (size_t i = 0; i < e->call.arg_count; i++) expr_free(e->call.args[i]);
@@ -79,6 +80,7 @@ static void consume(Parser* ps, TokenType t, ParseError* err, const char* msg) {
 }
 
 static Expr* parse_expr(Parser* ps, ParseError* err);
+static Expr* parse_or(Parser* ps, ParseError* err);
 
 static Expr* parse_primary(Parser* ps, ParseError* err) {
   if (err && err->has_error) return NULL;
@@ -147,23 +149,142 @@ static Expr* parse_call(Parser* ps, ParseError* err) {
   return expr;
 }
 
-static Expr* parse_term(Parser* ps, ParseError* err) {
+static Expr* parse_unary(Parser* ps, ParseError* err) {
+  if (match(ps, TOK_MINUS)) {
+    Expr* e = expr_new();
+    e->type = EXPR_UNARY;
+    e->unop = UN_NEGATE;
+    e->left = parse_unary(ps, err);
+    return e;
+  }
+  if (match(ps, TOK_NOT)) {
+    Expr* e = expr_new();
+    e->type = EXPR_UNARY;
+    e->unop = UN_NOT;
+    e->left = parse_unary(ps, err);
+    return e;
+  }
   return parse_call(ps, err);
 }
 
-static Expr* parse_expr(Parser* ps, ParseError* err) {
+static Expr* parse_factor(Parser* ps, ParseError* err) {
+  Expr* left = parse_unary(ps, err);
+  while (ps->cur.type == TOK_STAR || ps->cur.type == TOK_SLASH) {
+    Token op = ps->cur;
+    adv(ps);
+    Expr* right = parse_unary(ps, err);
+    Expr* bin = expr_new();
+    bin->type = EXPR_BINARY;
+    bin->tok = op;
+    bin->op = (op.type == TOK_STAR) ? BIN_MUL : BIN_DIV;
+    bin->left = left;
+    bin->right = right;
+    left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_term(Parser* ps, ParseError* err) {
+  Expr* left = parse_factor(ps, err);
+  while (ps->cur.type == TOK_PLUS || ps->cur.type == TOK_MINUS) {
+    Token op = ps->cur;
+    adv(ps);
+    Expr* right = parse_factor(ps, err);
+    Expr* bin = expr_new();
+    bin->type = EXPR_BINARY;
+    bin->tok = op;
+    bin->op = (op.type == TOK_PLUS) ? BIN_ADD : BIN_SUB;
+    bin->left = left;
+    bin->right = right;
+    left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_compare(Parser* ps, ParseError* err) {
   Expr* left = parse_term(ps, err);
-  while (ps->cur.type == TOK_PLUS) {
+  while (ps->cur.type == TOK_LT || ps->cur.type == TOK_LTE || ps->cur.type == TOK_GT || ps->cur.type == TOK_GTE) {
     Token op = ps->cur;
     adv(ps);
     Expr* right = parse_term(ps, err);
     Expr* bin = expr_new();
     bin->type = EXPR_BINARY;
     bin->tok = op;
-    bin->op = BIN_ADD;
+    switch (op.type) {
+      case TOK_LT: bin->op = BIN_LT; break;
+      case TOK_LTE: bin->op = BIN_LTE; break;
+      case TOK_GT: bin->op = BIN_GT; break;
+      case TOK_GTE: bin->op = BIN_GTE; break;
+      default: break;
+    }
     bin->left = left;
     bin->right = right;
     left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_equality(Parser* ps, ParseError* err) {
+  Expr* left = parse_compare(ps, err);
+  while (ps->cur.type == TOK_EQUAL_EQUAL || ps->cur.type == TOK_BANG_EQUAL) {
+    Token op = ps->cur;
+    adv(ps);
+    Expr* right = parse_compare(ps, err);
+    Expr* bin = expr_new();
+    bin->type = EXPR_BINARY;
+    bin->tok = op;
+    bin->op = (op.type == TOK_EQUAL_EQUAL) ? BIN_EQ : BIN_NEQ;
+    bin->left = left;
+    bin->right = right;
+    left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_and(Parser* ps, ParseError* err) {
+  Expr* left = parse_equality(ps, err);
+  while (match(ps, TOK_AND)) {
+    Token op = ps->prev;
+    Expr* right = parse_equality(ps, err);
+    Expr* bin = expr_new();
+    bin->type = EXPR_BINARY;
+    bin->tok = op;
+    bin->op = BIN_AND;
+    bin->left = left;
+    bin->right = right;
+    left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_or(Parser* ps, ParseError* err) {
+  Expr* left = parse_and(ps, err);
+  while (match(ps, TOK_OR)) {
+    Token op = ps->prev;
+    Expr* right = parse_and(ps, err);
+    Expr* bin = expr_new();
+    bin->type = EXPR_BINARY;
+    bin->tok = op;
+    bin->op = BIN_OR;
+    bin->left = left;
+    bin->right = right;
+    left = bin;
+  }
+  return left;
+}
+
+static Expr* parse_expr(Parser* ps, ParseError* err) {
+  Expr* left = parse_or(ps, err);
+  if (match(ps, TOK_IF)) {
+    Expr* cond = parse_or(ps, err);
+    consume(ps, TOK_OTHERWISE, err, "expected 'otherwise' in conditional expression");
+    Expr* else_branch = parse_or(ps, err);
+    Expr* tern = expr_new();
+    tern->type = EXPR_CONDITIONAL;
+    tern->left = left;      // then branch
+    tern->cond = cond;
+    tern->right = else_branch; // else branch
+    return tern;
   }
   return left;
 }
@@ -277,6 +398,34 @@ static Stmt parse_stmt(Parser* ps, ParseError* err, size_t indent) {
     size_t body_indent = ps->cur.col;
     s.block = (Block*)calloc(1, sizeof(Block));
     *s.block = parse_block(ps, err, body_indent);
+    return s;
+  }
+
+  if (match(ps, TOK_TRY)) {
+    s.type = STMT_TRY;
+    if (is_block_connector(ps->cur.type)) adv(ps);
+    if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+      s.block = parse_inline_block(ps, err, indent);
+    } else {
+      consume(ps, TOK_NEWLINE, err, "expected newline after try");
+      skip_newlines(ps);
+      size_t body_indent = ps->cur.col;
+      s.block = (Block*)calloc(1, sizeof(Block));
+      *s.block = parse_block(ps, err, body_indent);
+    }
+    if (ps->cur.type == TOK_OTHERWISE) {
+      adv(ps);
+      if (is_block_connector(ps->cur.type)) adv(ps);
+      if (ps->cur.type != TOK_NEWLINE && ps->cur.type != TOK_EOF) {
+        s.else_block = parse_inline_block(ps, err, indent);
+        return s;
+      }
+      consume(ps, TOK_NEWLINE, err, "expected newline after otherwise");
+      skip_newlines(ps);
+      size_t else_indent = ps->cur.col;
+      s.else_block = (Block*)calloc(1, sizeof(Block));
+      *s.else_block = parse_block(ps, err, else_indent);
+    }
     return s;
   }
 

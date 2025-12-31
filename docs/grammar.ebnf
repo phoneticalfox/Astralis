@@ -12,6 +12,7 @@ statement      = io_stmt
                | if_stmt
                | loop_stmt
                | repeat_stmt
+               | try_stmt
                | func_def
                | expr_stmt
                ;
@@ -30,6 +31,8 @@ loop_stmt      = "loop" [ "forever" ] [ connector ] inline_or_block ;
 
 repeat_stmt    = "repeat" IDENT "from" expr "to" expr [ connector ] inline_or_block ;
 
+try_stmt       = "try" [ connector ] inline_or_block [ "otherwise" [ connector ] inline_or_block ] ;
+
 func_def       = "define" IDENT "(" [ params ] ")" [ connector ] inline_or_block ;
 params         = IDENT { "," IDENT } ;
 
@@ -40,7 +43,14 @@ inline_stmt    = statement ;
 indented_block = NEWLINE INDENT { statement NEWLINE } DEDENT ;
 
 expr           = add ;
-add            = call { "+" call } ;
+add            = mult { ("+" | "-") mult } ;
+mult           = unary { ("*" | "/") unary } ;
+unary          = ("-" | "not") unary | conditional ;
+conditional    = or_expr [ "if" or_expr "otherwise" or_expr ] ;
+or_expr        = and_expr { "or" and_expr } ;
+and_expr       = equality { "and" equality } ;
+equality       = compare { ("==" | "!=") compare } ;
+compare        = call { ("<" | "<=" | ">" | ">=") call } ;
 call           = primary { "(" [ args ] ")" } ;
 args           = expr { "," expr } ;
 primary        = NUMBER

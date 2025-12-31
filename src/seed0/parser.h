@@ -8,14 +8,32 @@ typedef enum ExprType {
   EXPR_IDENT,
   EXPR_BINARY,
   EXPR_CALL,
-  EXPR_GROUP
+  EXPR_GROUP,
+  EXPR_UNARY,
+  EXPR_CONDITIONAL
 } ExprType;
 
 typedef struct Expr Expr;
 
 typedef enum BinOp {
-  BIN_ADD = 0
+  BIN_ADD = 0,
+  BIN_SUB,
+  BIN_MUL,
+  BIN_DIV,
+  BIN_EQ,
+  BIN_NEQ,
+  BIN_LT,
+  BIN_LTE,
+  BIN_GT,
+  BIN_GTE,
+  BIN_AND,
+  BIN_OR
 } BinOp;
+
+typedef enum UnOp {
+  UN_NEGATE = 0,
+  UN_NOT
+} UnOp;
 
 typedef struct CallExpr {
   Expr* callee;
@@ -28,8 +46,10 @@ struct Expr {
   Token tok;         // for ident or literal token (literal: STRING/NUMBER)
   Value lit;         // if literal
   BinOp op;
+  UnOp unop;
   Expr* left;
   Expr* right;
+  Expr* cond;
   CallExpr call;
 };
 
@@ -46,6 +66,7 @@ typedef enum StmtType {
   STMT_BREAK,
   STMT_CONTINUE,
   STMT_EXPR,
+  STMT_TRY,
   STMT_UNSUPPORTED
 } StmtType;
 

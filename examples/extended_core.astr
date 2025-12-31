@@ -1,0 +1,10 @@
+// Exercises extended core expression + error handling surface
+set a to 2 * 3 + 4
+set label to "big" if a >= 10 otherwise "small"
+show "label=" + label
+show "bool=" + (not (1 == 2))
+show "math=" + (a - 1) + "," + (12 / 3)
+try ->
+  show missing_binding
+otherwise ->
+  warn "caught missing"
