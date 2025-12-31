@@ -121,6 +121,94 @@ static Value add_values(const Value* a, const Value* b) {
   return v;
 }
 
+static Value sub_values(const Value* a, const Value* b) {
+  if (a->type == VAL_INT && b->type == VAL_INT) {
+    return value_int(a->i - b->i);
+  }
+  return value_error("sub expects ints", strlen("sub expects ints"));
+}
+
+static Value mul_values(const Value* a, const Value* b) {
+  if (a->type == VAL_INT && b->type == VAL_INT) {
+    return value_int(a->i * b->i);
+  }
+  return value_error("mul expects ints", strlen("mul expects ints"));
+}
+
+static Value div_values(const Value* a, const Value* b) {
+  if (a->type == VAL_INT && b->type == VAL_INT) {
+    if (b->i == 0) return value_error("division by zero", strlen("division by zero"));
+    return value_int(a->i / b->i);
+  }
+  return value_error("div expects ints", strlen("div expects ints"));
+}
+
+static int compare_ints(long a, long b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+static int compare_strings(const char* a, const char* b) {
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  return strcmp(a, b);
+}
+
+static Value compare_values(const Value* a, const Value* b, BinOp op) {
+  if (a->type == VAL_INT && b->type == VAL_INT) {
+    int cmp = compare_ints(a->i, b->i);
+    switch (op) {
+      case BIN_EQ: return value_bool(cmp == 0);
+      case BIN_NEQ: return value_bool(cmp != 0);
+      case BIN_LT: return value_bool(cmp < 0);
+      case BIN_LTE: return value_bool(cmp <= 0);
+      case BIN_GT: return value_bool(cmp > 0);
+      case BIN_GTE: return value_bool(cmp >= 0);
+      default: break;
+    }
+  }
+  if (a->type == VAL_STRING && b->type == VAL_STRING) {
+    int cmp = compare_strings(a->s, b->s);
+    switch (op) {
+      case BIN_EQ: return value_bool(cmp == 0);
+      case BIN_NEQ: return value_bool(cmp != 0);
+      default: break;
+    }
+  }
+  if (a->type == VAL_BOOL && b->type == VAL_BOOL) {
+    switch (op) {
+      case BIN_EQ: return value_bool(a->b == b->b);
+      case BIN_NEQ: return value_bool(a->b != b->b);
+      default: break;
+    }
+  }
+  if (a->type == VAL_NULL && b->type == VAL_NULL) {
+    switch (op) {
+      case BIN_EQ: return value_bool(true);
+      case BIN_NEQ: return value_bool(false);
+      default: break;
+    }
+  }
+  if (op == BIN_EQ || op == BIN_NEQ) {
+    bool eq = false;
+    if (a->type == b->type) {
+      eq = true;
+      switch (a->type) {
+        case VAL_INT: eq = a->i == b->i; break;
+        case VAL_BOOL: eq = a->b == b->b; break;
+        case VAL_STRING: eq = compare_strings(a->s, b->s) == 0; break;
+        case VAL_FUNC: eq = a->func == b->func; break;
+        case VAL_BUILTIN: eq = a->builtin == b->builtin; break;
+        default: break;
+      }
+    }
+    return value_bool(op == BIN_EQ ? eq : !eq);
+  }
+  return value_error("unsupported comparison", strlen("unsupported comparison"));
+}
+
 static Value call_function(const Function* fn, const Value* args, size_t argc, Env* env, char* errbuf, size_t errbuf_n);
 
 static Value eval_call(const CallExpr* call, Env* env, char* errbuf, size_t errbuf_n) {
@@ -168,15 +256,59 @@ Value eval_expr(const Expr* e, Env* env) {
       return env_get(env, e->tok.start, e->tok.length);
     case EXPR_GROUP:
       return eval_expr(e->left, env);
+    case EXPR_UNARY: {
+      Value inner = eval_expr(e->left, env);
+      if (inner.type == VAL_ERROR) return inner;
+      Value out = value_error("bad unary", strlen("bad unary"));
+      switch (e->unop) {
+        case UN_NEGATE:
+          if (inner.type == VAL_INT) out = value_int(-inner.i);
+          else out = value_error("negate expects int", strlen("negate expects int"));
+          break;
+        case UN_NOT:
+          out = value_bool(!value_is_truthy(&inner));
+          break;
+      }
+      value_free(&inner);
+      return out;
+    }
     case EXPR_BINARY: {
       Value l = eval_expr(e->left, env);
       if (l.type == VAL_ERROR) return l;
       Value r = eval_expr(e->right, env);
       if (r.type == VAL_ERROR) { value_free(&l); return r; }
-      Value out = add_values(&l, &r);
+      Value out = value_error("unknown binary", strlen("unknown binary"));
+      switch (e->op) {
+        case BIN_ADD: out = add_values(&l, &r); break;
+        case BIN_SUB: out = sub_values(&l, &r); break;
+        case BIN_MUL: out = mul_values(&l, &r); break;
+        case BIN_DIV: out = div_values(&l, &r); break;
+        case BIN_EQ: case BIN_NEQ: case BIN_LT: case BIN_LTE: case BIN_GT: case BIN_GTE:
+          out = compare_values(&l, &r, e->op); break;
+        case BIN_AND: {
+          bool lv = value_is_truthy(&l);
+          if (!lv) out = value_bool(false);
+          else out = value_bool(value_is_truthy(&r));
+          break;
+        }
+        case BIN_OR: {
+          bool lv = value_is_truthy(&l);
+          if (lv) out = value_bool(true);
+          else out = value_bool(value_is_truthy(&r));
+          break;
+        }
+        default: break;
+      }
       value_free(&l);
       value_free(&r);
       return out;
+    }
+    case EXPR_CONDITIONAL: {
+      Value cond = eval_expr(e->cond, env);
+      if (cond.type == VAL_ERROR) return cond;
+      bool truth = value_is_truthy(&cond);
+      value_free(&cond);
+      return truth ? eval_expr(e->left, env) : eval_expr(e->right, env);
     }
     case EXPR_CALL:
       return eval_call(&e->call, env, NULL, 0);
@@ -263,6 +395,22 @@ static bool exec_stmt(const Stmt* s, Env* env, ExecState* st, char* errbuf, size
       bool ok = env_define_local(env, s->name.start, s->name.length, &fv, true, errbuf, errbuf_n);
       value_free(&fv);
       return ok;
+    }
+    case STMT_TRY: {
+      char local_err[256] = {0};
+      ExecState inner = *st;
+      if (exec_block(s->block, env, &inner, local_err, sizeof(local_err))) {
+        *st = inner;
+        return true;
+      }
+      if (s->else_block) {
+        ExecState else_state = *st;
+        bool ok = exec_block(s->else_block, env, &else_state, errbuf, errbuf_n);
+        if (ok) *st = else_state;
+        return ok;
+      }
+      snprintf(errbuf, errbuf_n, "%s", local_err[0] ? local_err : "error");
+      return false;
     }
     case STMT_RETURN: {
       st->returned = true;

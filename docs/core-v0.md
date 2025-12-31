@@ -17,6 +17,17 @@ Core v0 locks the smallest executable slice of Astralis that seed0 will implemen
 - **Loops**: `loop forever` honors `break`/`continue`; `repeat i from A to B` counts upward and binds/updates the loop variable in the current scope.
 - **Immutability**: `lock` creates bindings that cannot be reassigned.
 
+## Bridging to the broader language core
+
+The seed0 interpreter now supports several constructs that were called for in
+`language-core.md` but were previously absent from the Core v0 contract:
+
+- Additional arithmetic operators: `-`, `*`, `/`.
+- Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`.
+- Boolean operators: `and`, `or`, and unary `not`.
+- Inline conditional expressions: `<then-expr> if <cond> otherwise <else-expr>`.
+- Error handling block: `try ... otherwise ...`.
+
 ## Regression surface
 
 Examples under `examples/` (except those with `.skip`) form the Core v0 regression suite. `tools/run_examples.sh` runs them through the seed0 interpreter and diffs outputs against the expected `.out` files.
